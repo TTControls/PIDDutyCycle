@@ -29,16 +29,16 @@ if
 	PID.bEnable
 then
 	PID.rProportionalGain	:= 1;
-	PID.rIntegralGain		:= 1;
-	PID.rDerivativeGain		:= 1;
+	PID.rIntegralGain	:= 1;
+	PID.rDerivativeGain	:= 1;
 	PID.tRamp.TimerEnable 	:= 1;
-	PID.tRamp.Reset 		:= 0;
+	PID.tRamp.Reset 	:= 0;
 else
 	PID.rProportionalGain	:= 0;
-	PID.rIntegralGain		:= 0;
-	PID.rDerivativeGain		:= 0;
+	PID.rIntegralGain	:= 0;
+	PID.rDerivativeGain	:= 0;
 	PID.tRamp.TimerEnable 	:= 0;
-	PID.tRamp.Reset 		:= 1;
+	PID.tRamp.Reset 	:= 1;
 end_if;
 
 //Duty cycle time loop
