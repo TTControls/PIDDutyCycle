@@ -1,19 +1,26 @@
 //_01_Control 
 //_04_PID
-//Used to control a discrete output with PWM from PID in respect to a duration of time.
+//Used to control motion ramp profiles
 //
 //Software Changes:
 //071520	TJT		Block creation
 //_____________________________________________________________________________________________________________________________________________________________
 //Notes:
 //PID Control
-//This is a test aplication for pidpwm control
+//This is a test aplication for pid control
 //
 
 //Time functions for cycle
 //Ramp duration		(|(SP-PV)|/dt)*Sec/Min*mSec/Sec
 tonr(PID.tRamp);
-PID.tRamp.PRE 		:= abs((PID.rSetpoint - PID.rProcessVariable))/PID.rRamp*60*1000;
+if
+	PID.rSetpoint > PID.rProcessVariable
+then
+	PID.tRamp.PRE 	:= abs((PID.rSetpoint - PID.rProcessVariable))/PID.rRamp*60*1000;
+else
+	PID.tRamp.ACC 	:= PID.tRamp.PRE;
+end_if;
+PID.rEstimatedRampTime	:= (PID.tRamp.PRE/1000)/60;
 //Time ouput is on at 100%
 tonr(PID.tDutyCycle);
 PID.tDutyCycle.PRE	:= PID.rDutyCycle * 1000;
@@ -24,32 +31,26 @@ if
 then
 	PID.rRamp := .01;
 end_if;
-//Enable Control
+
+//Enable Control and check variable changes for automatic recalculation
 if
-	PID.bEnable
+	PID.bEnable and 
+	PID.rSetpoint = PID.rSetpointLast and 
+	PID.rRamp = PID.rRampLast
 then
 	PID.rProportionalGain	:= 1;
-	PID.rIntegralGain	:= 1;
-	PID.rDerivativeGain	:= 1;
+	PID.rIntegralGain		:= .02;
+	PID.rDerivativeGain		:= 1.1;
 	PID.tRamp.TimerEnable 	:= 1;
-	PID.tRamp.Reset 	:= 0;
+	PID.tRamp.Reset 		:= 0;
 else
 	PID.rProportionalGain	:= 0;
-	PID.rIntegralGain	:= 0;
-	PID.rDerivativeGain	:= 0;
+	PID.rIntegralGain		:= 0;
+	PID.rDerivativeGain		:= 0;
 	PID.tRamp.TimerEnable 	:= 0;
-	PID.tRamp.Reset 	:= 1;
-end_if;
-
-//Duty cycle time loop
-if
-	PID.bEnable and not PID.tDutyCycle.DN
-then
-	PID.tDutyCycle.TimerEnable	:= 1;
-	PID.tDutyCycle.Reset 		:= 0;
-else
-	PID.tDutyCycle.TimerEnable	:= 0;
-	PID.tDutyCycle.Reset 		:= 1;
+	PID.tRamp.Reset 		:= 1;
+	PID.rSetpointLast		:= PID.rSetpoint;
+	PID.rRampLast			:= PID.rRamp;
 end_if;
 
 //Proportional
@@ -57,17 +58,17 @@ end_if;
 PID.rProportionalTerm 	:= PID.rProportionalGain * (PID.rSetpoint - PID.rProcessVariable) * (PID.tRamp.ACC/PID.tRamp.PRE);
 
 //Integral
-//Integrator			Sets integral limits or I=I+error*(dx/dt)
+//Integrator			Sets integral saturation limits or calculate integrator I=I+error*(dx/dt)
 if
-	PID.rIntegrator > PID.rIntegratorMax
+	PID.rIntegrator > PID.rSetpoint //PID.rIntegratorMax
 then
-	PID.rIntegrator		:= PID.rIntegratorMax;
+	PID.rIntegrator		:= PID.rSetpoint; //PID.rIntegratorMax;
 elsif
-	PID.rIntegrator < PID.rIntegratorMin
+	PID.rIntegrator < 0 //PID.rIntegratorMin
 then
-	PID.rIntegrator		:= PID.rIntegratorMin;
+	PID.rIntegrator		:= 1; //PID.rIntegratorMin;
 else
-	PID.rIntegrator		:= (PID.rIntegrator + (PID.rSetpoint - PID.rProcessVariable));
+	PID.rIntegrator		:= PID.rIntegrator + (PID.rSetpoint - PID.rProcessVariable);
 end_if;
 //Integral Term			Ki*(I=I+error*(dx/dt))
 PID.rIntegralTerm 		:= PID.rIntegralGain * PID.rIntegrator * (PID.tRamp.ACC/PID.tRamp.PRE);
@@ -78,7 +79,7 @@ PID.rDerivativeTerm		:= (PID.rDerivativeGain * (PID.rDeviation - PID.rProcessVar
 //Deviation from line above
 PID.rDeviation			:= PID.rProcessVariable;
 
-//Limit saturation or calculate Control Variable
+//Limit saturation or calculate Control Variable CV=P+I+D
 if
 	PID.rControlVariable > 100
 then
@@ -92,9 +93,27 @@ else
 end_if;
 
 //Duty Cycle
-//Scale PID span with ducty cycle duration (dt-0)/(100-0)*CV
-PID.rDutyCycleON :=	((PID.tDutyCycle.PRE - 0)/(100 - 0) * 
-					PID.rControlVariable) + 
-					(0 - (((PID.tDutyCycle.PRE - 0)/(100 - 0)) * 0));
+//Duty cycle time loop
+if
+	PID.bEnable and not PID.tDutyCycle.DN
+then
+	PID.tDutyCycle.TimerEnable	:= 1;
+	PID.tDutyCycle.Reset 		:= 0;
+else
+	PID.tDutyCycle.TimerEnable	:= 0;
+	PID.tDutyCycle.Reset 		:= 1;
+end_if;
+//Scale PID span with ducty cycle duration (dt-0)/(100-0)*CV - ie. if CV=50 the on time will be half of the preset time.
+PID.rDutyCycleON :=	((PID.tDutyCycle.PRE - 0)/(PID.rSetpoint - 0) * PID.rControlVariable) + (0 - (((PID.tDutyCycle.PRE - 0)/(PID.rSetpoint - 0)) * 0));
 					
 PID.bControlOutput := PID.tDutyCycle.ACC < PID.rDutyCycleON;
+
+//Tolerance, check PV with SP
+if
+	PID.rProcessVariable > (PID.rSetpoint - (PID.rSetpoint * PID.rToleranceWindow)) and 
+	PID.rProcessVariable < (PID.rSetpoint + (PID.rSetpoint * PID.rToleranceWindow))
+then
+	PID.bInTolerance := 1;
+else
+	PID.bInTolerance := 0;
+end_if;
