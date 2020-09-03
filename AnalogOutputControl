@@ -1,0 +1,296 @@
+//AOC
+//Analog Output Control
+//
+//Software Changes:
+//090320	TJT		Block creation
+//
+//Notes:
+//PID Control with ramping profiles and PWM
+//
+//
+
+//Inputs
+//bEnable							  Starts function
+//rSetpoint							Input  set point variable
+//rProcessVariable			Input  process variable
+//iRampProfile					1 = Linear 2 = S-Curve
+//rRampTime							Seconds to ramp to set point
+//iGainType							1 = Distributive 2 = Independant //Not functional
+//rDistributiveGain			//Not functional
+//rProportionalGain			Decimal percentage multiplied by error	
+//rIntegralGain					Decimal percentage multiplied by the sum of all errors
+//rDerivativeGain				Decimal percentage multiplied by the difference in PV2 and PV1
+//iRampUnits						1 = per sceond 2= per minute 3= per hour
+//rSampleRate						Miliseconds between PV1 and PV2
+//rPWMBaseTime					Time discrete out is on at 100%
+//rAtSetpointTolerance	Decimal percentage window around set point
+//rDeadBandPercent			Decimal percentage window around set point target
+
+//Outputs
+//ControlVariable				Analog output control from 0 to setpoint
+//bControlOutput				Discrete output control
+//rSetpointTarget				Moving setpoint target proportional to ramp profile and time
+//bAtSetpoint						Feedback on PV = SP
+//rEstimatedRampTime		Time to SP
+//rRate								  Rate of change in chosen units 
+//rDeadBandUpperLimit		Upper following error
+//rDeadBandLowerLimit		Lower following error
+//iError						   	Error code
+
+//Time functions for cycle
+//Ramp duration		(|(SP-PV)|/dt)*Sec/Hour or *Sec/Min and/or *mSec/Sec
+tonr(tRamp);
+if
+	iRampUnits = 1 //per second
+then
+	tRamp.PRE 	:= abs((rSetpoint - rProcessVariableInit))/rRampTime*1000;
+elsif
+	iRampUnits = 2 //per minute
+then
+	tRamp.PRE 	:= abs((rSetpoint - rProcessVariableInit))/rRampTime*60*1000;
+elsif
+	iRampUnits = 3 //per hour
+then
+	tRamp.PRE 	:= abs((rSetpoint - rProcessVariableInit))/rRampTime*3600*1000;
+end_if;
+//Estemated time to set point count down		dt-dx
+rEstimatedRampTime	:= tRamp.PRE/1000 - tRamp.ACC/1000;
+
+//PWM duty cycle	Time ouput is on at 100%
+tonr(tDutyCycle);
+tDutyCycle.PRE	:= rPWMBaseTime * 1000;
+//Sample for rate of change calc.
+tonr(tRate);
+tRate.PRE	:= rSampleRate;
+
+//Keeps from dividing by zero.
+if 
+	rRampTime = 0
+then
+	rRampTime := .01;
+end_if;
+
+//Enable Control and check variable changes for bumpless transfer and recalculation
+if
+	bEnable and
+	//iError = 0 and
+	rSetpoint = rSetpointLast and 
+	rRampTime = rRampLast
+then
+	//rProportionalGain		:= 1;
+	//rIntegralGain			  := .02;
+	//rDerivativeGain		  := 1.1;
+	tRamp.TimerEnable 		:= 1;
+	tRamp.Reset 			    := 0;
+else
+	rProportionalGain		  := 0;
+	rIntegralGain			    := 0;
+	rDerivativeGain			  := 0;
+	tRamp.TimerEnable 		:= 0;
+	tRamp.Reset 			    := 1;
+	rSetpointLast			    := rSetpoint;
+	rRampLast				      := rRampTime;
+	rProcessVariableInit	:= rProcessVariable;
+end_if;
+
+//Sets ramping direction
+if
+	not tRamp.DN
+then
+	if
+		rSetpoint > rProcessVariable 
+	then
+		iRampDirection := 1; //Accelerating
+	else
+		iRampDirection := 2; //Decelerating
+	end_if;
+end_if;
+
+//Chooses ramping profile
+if
+	iRampProfile = 1 //Linear
+then
+	if
+		iRampDirection = 1 //Accelerating	Scalar of the SP and current measurement with dx/dt to increase in value from 0 to 1
+	then
+		rSetpointTarget := 	((rSetpoint - rProcessVariableInit)/(1 - 0) * (tRamp.ACC/tRamp.PRE)) + 
+							(rProcessVariableInit - (((rSetpoint - rProcessVariableInit)/(1 - 0)) * 0));
+	elsif
+		iRampDirection = 2 //Decelerating	Scalar of the SP and current measurement with -dx/dt+1 to decrease in value from 1 to 0
+	then
+		rSetpointTarget := 	((rSetpoint - rProcessVariableInit)/(1 - 0) * ((-1*(tRamp.ACC/tRamp.PRE))+1)) + 
+							(rProcessVariableInit - (((rSetpoint - rProcessVariableInit)/(1 - 0)) * 0));
+	end_if;
+elsif
+	iRampProfile = 2 //S-Curve
+then
+	if
+		iRampDirection = 1 //Accelerating	Scalar of the SP and current measurment with a constrained polynomial where x=dx/dt resulting in an increasing s-cuve from 0 to 1
+	then
+		rSetpointTarget := 	((rSetpoint - rProcessVariableInit)/(1 - 0) * ((-2*((tRamp.ACC/tRamp.PRE)**3))+(3*((tRamp.ACC/tRamp.PRE)**2)))) + 
+							(rProcessVariableInit - (((rSetpoint - rProcessVariableInit)/(1 - 0)) * 0));
+	elsif
+		iRampDirection = 2 //Decelerating	Scalar of the SP and current measurment with a constrained inverse polynomial +1 where x=dx/dt resulting in an decreasing s-cuve from 1 to 0
+	then
+		rSetpointTarget := 	((rSetpoint - rProcessVariableInit)/(1 - 0) * (((2*((tRamp.ACC/tRamp.PRE)**3))-(3*((tRamp.ACC/tRamp.PRE)**2)))+1)) + 
+							(rProcessVariableInit - (((rSetpoint - rProcessVariableInit)/(1 - 0)) * 0));
+	end_if;
+end_if;
+
+//PID
+//Proportional
+//Proportional on Error Term		P=Kp*error*(dx/dt)
+//Proportional on Measurement Term	P=-Kp-(PV-Deviation)
+iProportionalMode := 1; //Hold on error
+if
+	iProportionalMode = 1
+then
+	rProportionalTerm 	:= rProportionalGain * (rSetpointTarget - rProcessVariable);
+elsif
+	iProportionalMode = 2
+then
+	rProportionalTerm 	:= (rProportionalGain * -1) * (rProcessVariable - rDeviation);
+end_if;
+
+//Integral
+//Integrator, sets integral saturation limits or calculate the integrator	I=I+error
+if
+	rIntegrator > rSetpointTarget 			
+then
+	rIntegrator		:= rSetpointTarget; 		//Integrator Max
+elsif
+	rIntegrator < 0 						
+then
+	rIntegrator		:= 0; 						//Integrator Min
+else
+	rIntegrator		:= rIntegrator + (rSetpointTarget - rProcessVariable); //Sum of all errors, if feeds the value back into itself
+end_if;
+//Integral Term			Ki*I
+rIntegralTerm 	:= rIntegralGain * rIntegrator;
+
+//Derivative
+//Derivative Term		Kd*(pv2-pv1)
+rDerivativeTerm	:= (rDerivativeGain * (rDeviation - rProcessVariable));
+//Deviation from line above
+rDeviation			:= rProcessVariable;
+
+//Limit saturation(taken out because idk why yet) or calculate Control Variable CV=P+I+D
+rControlVariable := rProportionalTerm + rIntegralTerm + rDerivativeTerm;
+(*
+if
+	rControlVariable > rSetpointTarget
+then
+	rControlVariable := rSetpointTarget;
+elsif
+	rControlVariable < 0
+then
+	rControlVariable := 0;
+end_if;
+*)
+//Duty Cycle
+//Duty cycle time loop
+if
+	bEnable and not tDutyCycle.DN
+then
+	tDutyCycle.TimerEnable	:= 1;
+	tDutyCycle.Reset 	    	:= 0;
+else
+	tDutyCycle.TimerEnable	:= 0;
+	tDutyCycle.Reset 	    	:= 1;
+end_if;
+//Scale PID span with ducty cycle duration (dt-0)/(100-0)*CV - ie. if CV=50 the on time will be half of the preset time.
+rPWMOnTime :=	((tDutyCycle.PRE - 0)/(rSetpointTarget - 0) * rControlVariable) + (0 - (((tDutyCycle.PRE - 0)/(rSetpointTarget - 0)) * 0));
+//Pulses the output					
+bControlOutput := tDutyCycle.ACC < rPWMOnTime;
+
+//Tolerance, check PV with SP
+if
+	rProcessVariable > rSetpoint - rSetpoint * rAtSetpointTolerance and 
+	rProcessVariable < rSetpoint + rSetpoint * rAtSetpointTolerance
+then
+	bAtSetpoint := 1;
+else
+	bAtSetpoint := 0;
+end_if;
+
+//Deadband, check PV with SP target
+rDeadBandLowerLimit := rSetpointTarget - rSetpointTarget * rDeadBandTolerance;
+rDeadBandUpperLimit := rSetpointTarget + rSetpointTarget * rDeadBandTolerance;
+if
+	rProcessVariable > rDeadBandLowerLimit and 
+	rProcessVariable < rDeadBandUpperLimit
+then
+	bFollowingError := 0;
+else
+	bFollowingError := 1;
+end_if;
+
+//Calculate rate of change
+//Rate time loop
+if 
+	not tRate.DN
+then
+	tRate.Reset 			    := 0;					//Turns timer on 
+	tRate.TimerEnable 		:= 1;
+	tRate.EnableIn 			  := 1;
+else
+	tRate.Reset 			    := 1;					//Turns timer off
+	tRate.TimerEnable 		:= 0;
+	tRate.EnableIn 		  	:= 0;
+end_if;
+//Aquire unit of time
+if
+	iRampUnits = 1	//per second
+then
+	rRateTimeUnits := (tRate.PRE/1000);
+elsif
+	iRampUnits = 2	//per minute
+then
+	rRateTimeUnits := ((tRate.PRE/1000)/60);
+elsif
+	iRampUnits = 3	//per hour
+then
+	rRateTimeUnits := ((tRate.PRE/1000)/3600);
+end_if;
+
+case iRateState of
+	0://Write measurement sample 1
+		if
+			tRate.DN
+		then
+			rRateSample 	:= rProcessVariable;
+			iRateState		:= 5;
+		end_if;
+
+	5://Restart time
+		if
+			not tRate.DN
+		then
+			iRateState		:= 10;
+		end_if;
+	
+	10://Write measurement sample 2 and calculate
+		//If the absolue value doesnt define direction, like heat, take it out, if position, leave it.
+		if 
+			tRate.DN
+		then
+			rRateError		:= ABS(rRateSample - rProcessVariable);
+			rRate 			  := rRateError / rRateTimeUnits;
+			iRateState		:= 15;
+		end_if;
+	
+	15://Restart
+		if
+			not tRate.DN
+		then
+			iRateState		:= 0;
+		end_if;
+end_case;
+
+//Errors
+//Following Error
+if
+	bEnable and bFollowingError
+then
+	iError := 1000;
+end_if;
