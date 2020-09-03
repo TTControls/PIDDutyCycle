@@ -10,32 +10,32 @@
 //
 
 //Inputs
-//bEnable							  Starts function
+//bEnable							Starts function
 //rSetpoint							Input  set point variable
-//rProcessVariable			Input  process variable
-//iRampProfile					1 = Linear 2 = S-Curve
+//rProcessVariable					Input  process variable
+//iRampProfile						1 = Linear 2 = S-Curve
 //rRampTime							Seconds to ramp to set point
 //iGainType							1 = Distributive 2 = Independant //Not functional
-//rDistributiveGain			//Not functional
-//rProportionalGain			Decimal percentage multiplied by error	
-//rIntegralGain					Decimal percentage multiplied by the sum of all errors
-//rDerivativeGain				Decimal percentage multiplied by the difference in PV2 and PV1
+//rDistributiveGain					//Not functional
+//rProportionalGain					Decimal percentage multiplied by error	
+//rIntegralGain						Decimal percentage multiplied by the sum of all errors
+//rDerivativeGain					Decimal percentage multiplied by the difference in PV2 and PV1
 //iRampUnits						1 = per sceond 2= per minute 3= per hour
 //rSampleRate						Miliseconds between PV1 and PV2
-//rPWMBaseTime					Time discrete out is on at 100%
-//rAtSetpointTolerance	Decimal percentage window around set point
-//rDeadBandPercent			Decimal percentage window around set point target
+//rPWMBaseTime						Time discrete out is on at 100%
+//rAtSetpointTolerance				Decimal percentage window around set point
+//rDeadBandPercent					Decimal percentage window around set point target
 
 //Outputs
-//ControlVariable				Analog output control from 0 to setpoint
-//bControlOutput				Discrete output control
-//rSetpointTarget				Moving setpoint target proportional to ramp profile and time
+//ControlVariable					Analog output control from 0 to setpoint
+//bControlOutput					Discrete output control
+//rSetpointTarget					Moving setpoint target proportional to ramp profile and time
 //bAtSetpoint						Feedback on PV = SP
-//rEstimatedRampTime		Time to SP
-//rRate								  Rate of change in chosen units 
-//rDeadBandUpperLimit		Upper following error
-//rDeadBandLowerLimit		Lower following error
-//iError						   	Error code
+//rEstimatedRampTime				Time to SP
+//rRate								Rate of change in chosen units 
+//rDeadBandUpperLimit				Upper following error
+//rDeadBandLowerLimit				Lower following error
+//iError							Error code
 
 //Time functions for cycle
 //Ramp duration		(|(SP-PV)|/dt)*Sec/Hour or *Sec/Min and/or *mSec/Sec
@@ -78,18 +78,18 @@ if
 	rRampTime = rRampLast
 then
 	//rProportionalGain		:= 1;
-	//rIntegralGain			  := .02;
-	//rDerivativeGain		  := 1.1;
+	//rIntegralGain			:= .02;
+	//rDerivativeGain		:= 1.1;
 	tRamp.TimerEnable 		:= 1;
-	tRamp.Reset 			    := 0;
+	tRamp.Reset 			:= 0;
 else
-	rProportionalGain		  := 0;
-	rIntegralGain			    := 0;
-	rDerivativeGain			  := 0;
+	rProportionalGain		:= 0;
+	rIntegralGain			:= 0;
+	rDerivativeGain			:= 0;
 	tRamp.TimerEnable 		:= 0;
-	tRamp.Reset 			    := 1;
-	rSetpointLast			    := rSetpoint;
-	rRampLast				      := rRampTime;
+	tRamp.Reset 			:= 1;
+	rSetpointLast			:= rSetpoint;
+	rRampLast				:= rRampTime;
 	rProcessVariableInit	:= rProcessVariable;
 end_if;
 
@@ -166,11 +166,11 @@ else
 	rIntegrator		:= rIntegrator + (rSetpointTarget - rProcessVariable); //Sum of all errors, if feeds the value back into itself
 end_if;
 //Integral Term			Ki*I
-rIntegralTerm 	:= rIntegralGain * rIntegrator;
+rIntegralTerm 		:= rIntegralGain * rIntegrator;
 
 //Derivative
 //Derivative Term		Kd*(pv2-pv1)
-rDerivativeTerm	:= (rDerivativeGain * (rDeviation - rProcessVariable));
+rDerivativeTerm		:= (rDerivativeGain * (rDeviation - rProcessVariable));
 //Deviation from line above
 rDeviation			:= rProcessVariable;
 
@@ -193,10 +193,10 @@ if
 	bEnable and not tDutyCycle.DN
 then
 	tDutyCycle.TimerEnable	:= 1;
-	tDutyCycle.Reset 	    	:= 0;
+	tDutyCycle.Reset 		:= 0;
 else
 	tDutyCycle.TimerEnable	:= 0;
-	tDutyCycle.Reset 	    	:= 1;
+	tDutyCycle.Reset 		:= 1;
 end_if;
 //Scale PID span with ducty cycle duration (dt-0)/(100-0)*CV - ie. if CV=50 the on time will be half of the preset time.
 rPWMOnTime :=	((tDutyCycle.PRE - 0)/(rSetpointTarget - 0) * rControlVariable) + (0 - (((tDutyCycle.PRE - 0)/(rSetpointTarget - 0)) * 0));
@@ -230,13 +230,13 @@ end_if;
 if 
 	not tRate.DN
 then
-	tRate.Reset 			    := 0;					//Turns timer on 
+	tRate.Reset 			:= 0;					//Turns timer on 
 	tRate.TimerEnable 		:= 1;
-	tRate.EnableIn 			  := 1;
+	tRate.EnableIn 			:= 1;
 else
-	tRate.Reset 			    := 1;					//Turns timer off
+	tRate.Reset 			:= 1;					//Turns timer off
 	tRate.TimerEnable 		:= 0;
-	tRate.EnableIn 		  	:= 0;
+	tRate.EnableIn 			:= 0;
 end_if;
 //Aquire unit of time
 if
@@ -275,7 +275,7 @@ case iRateState of
 			tRate.DN
 		then
 			rRateError		:= ABS(rRateSample - rProcessVariable);
-			rRate 			  := rRateError / rRateTimeUnits;
+			rRate 			:= rRateError / rRateTimeUnits;
 			iRateState		:= 15;
 		end_if;
 	
