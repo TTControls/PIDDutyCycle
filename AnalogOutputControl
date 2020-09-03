@@ -89,8 +89,8 @@ else
 	tRamp.TimerEnable 		:= 0;
 	tRamp.Reset 			:= 1;
 	rSetpointLast			:= rSetpoint;
-	rRampLast				:= rRampTime;
-	rProcessVariableInit	:= rProcessVariable;
+	rRampLast			:= rRampTime;
+	rProcessVariableInit		:= rProcessVariable;
 end_if;
 
 //Sets ramping direction
@@ -161,16 +161,16 @@ then
 elsif
 	rIntegrator < 0 						
 then
-	rIntegrator		:= 0; 						//Integrator Min
+	rIntegrator		:= 0; 				//Integrator Min
 else
 	rIntegrator		:= rIntegrator + (rSetpointTarget - rProcessVariable); //Sum of all errors, if feeds the value back into itself
 end_if;
 //Integral Term			Ki*I
-rIntegralTerm 		:= rIntegralGain * rIntegrator;
+rIntegralTerm 			:= rIntegralGain * rIntegrator;
 
 //Derivative
 //Derivative Term		Kd*(pv2-pv1)
-rDerivativeTerm		:= (rDerivativeGain * (rDeviation - rProcessVariable));
+rDerivativeTerm			:= (rDerivativeGain * (rDeviation - rProcessVariable));
 //Deviation from line above
 rDeviation			:= rProcessVariable;
 
